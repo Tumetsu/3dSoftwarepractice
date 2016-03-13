@@ -157,23 +157,24 @@ module SoftEngine {
 
         // Project takes some 3D coordinates and transform them
         // in 2D coordinates using the transformation matrix
-        public project(coord: BABYLON.Vector3,  transMat: BABYLON.Matrix): BABYLON.Vector2 {
+        public project(coord: BABYLON.Vector3, transMat: BABYLON.Matrix): BABYLON.Vector3 {
             // transforming the coordinates
             var point = BABYLON.Vector3.TransformCoordinates(coord, transMat);
             // The transformed coordinates will be based on coordinate system
             // starting on the center of the screen. But drawing on screen normally starts
             // from top left. We then need to transform them again to have x:0, y:0 on top left.
-            var x = point.x * this.workingWidth + this.workingWidth / 2.0 >> 0;
-            var y = -point.y * this.workingHeight + this.workingHeight / 2.0 >> 0;
-            return (new BABYLON.Vector2(x, y));
+            var x = point.x * this.workingWidth + this.workingWidth / 2.0;
+            var y = -point.y * this.workingHeight + this.workingHeight / 2.0;
+            return (new BABYLON.Vector3(x, y, point.z));
         }
 
+
         // drawPoint calls putPixel but does the clipping operation before
-        public drawPoint(point: BABYLON.Vector2): void {
+        public drawPoint(point: BABYLON.Vector2, color: BABYLON.Color4): void {
             // Clipping what's visible on screen
-            if(point.x >= 0 && point.y >= 0 && point.x < this.workingWidth && point.y << this.workingHeight) {
+            if (point.x >= 0 && point.y >= 0 && point.x < this.workingWidth && point.y < this.workingHeight) {
                 // Drawing a yellow point
-                this.putPixel(point.x, point.y, new BABYLON.Color4(1, 1, 0, 1));
+                this.putPixel(point.x, point.y, color);
             }
         }
 
@@ -235,7 +236,7 @@ module SoftEngine {
                 var transformMatrix = worldMatrix.multiply(viewMatrix).multiply(projectionMatrix);
 
                 //facejen piirtäminen
-                cMesh.Faces.forEach(function(face) {
+                cMesh.Faces.forEach(function(face, i) {
                     //hae facen vertexit meshistä
                     var vertexA = cMesh.Vertices[face.A];
                     var vertexB = cMesh.Vertices[face.B];
@@ -245,14 +246,114 @@ module SoftEngine {
                     var pixelB = this.project(vertexB, transformMatrix);
                     var pixelC = this.project(vertexC, transformMatrix);
                     //piirrä viivat pikseleiden välille 2d tasolle
-                    this.drawBline(pixelA, pixelB);
-                    this.drawBline(pixelB, pixelC);
-                    this.drawBline(pixelC, pixelA);
+                    //this.drawBline(pixelA, pixelB);
+                    //this.drawBline(pixelB, pixelC);
+                    //this.drawBline(pixelC, pixelA);
+                    var color: number = 0.25 + ((i % cMesh.Faces.length) / cMesh.Faces.length) * 0.75;
+                    this.drawTriangle(pixelA, pixelB, pixelC, new BABYLON.Color4(color, color, color, 1));
 
                 }, this);
 
             }, this);
 
+        }
+
+
+        // Clamping values to keep them between 0 and 1
+        public clamp(value: number, min: number = 0, max: number = 1): number {
+            return Math.max(min, Math.min(value, max));
+        }
+
+        // Interpolating the value between 2 vertices
+        // min is the starting point, max the ending point
+        // and gradient the % between the 2 points
+        public interpolate(min: number, max: number, gradient: number) {
+            return min + (max - min)*this.clamp(gradient);
+        }
+
+        // drawing line between 2 points from left to right
+        // papb -> pcpd
+        // pa, pb, pc, pd must then be sorted before
+        public processScanLine(y: number, pa: BABYLON.Vector3, pb: BABYLON.Vector3,
+                               pc: BABYLON.Vector3, pd: BABYLON.Vector3, color: BABYLON.Color4): void {
+
+            var gradient1:number = pa.y != pb.y ? (y - pa.y)/(pb.y - pa.y) : 1;
+            var gradient2:number = pc.y != pd.y ? (y - pc.y)/(pd.y - pc.y) : 1;
+            var sx:number = this.interpolate(pa.x, pb.x, gradient1);
+            var ex:number = this.interpolate(pc.x, pd.x, gradient2);
+
+            //draw line
+            for (var x:number = sx; x <= ex; x++) {
+                this.drawPoint(new BABYLON.Vector2(x, y), color);
+            }
+
+        }
+
+        public drawTriangle(p1: BABYLON.Vector3, p2: BABYLON.Vector3,
+                            p3: BABYLON.Vector3, color: BABYLON.Color4): void {
+
+            //sort vectors based on y
+            if (p1.y > p2.y) {
+                var temp = p2;
+                p2 = p1;
+                p1 = temp;
+            }
+
+            if (p2.y > p3.y) {
+                var temp = p2;
+                p2 = p3;
+                p3 = temp;
+            }
+
+            if (p1.y > p2.y) {
+                var temp = p2;
+                p2 = p1;
+                p1 = temp;
+            }
+
+            //calculate inverse slopes
+            var dp1p2:number;
+            var dp1p3:number;
+
+            if (p2.y - p1.y > 0)
+                dp1p2 = (p2.x-p1.x)/(p2.y-p1.y);
+            else
+                dp1p2 = 0;
+
+            if (p3.y - p1.y > 0)
+                dp1p3 = (p3.x-p1.x)/(p3.y-p1.y);
+            else
+                dp1p3 = 0;
+
+
+
+            if (dp1p2 > dp1p3) {
+                //p2 of triangle is on right side. Iterate from top to down
+                for (var i:number = p1.y >> 0; i <= p3.y; i++) {
+
+                    //top half
+                    if (i < p2.y) {
+                        this.processScanLine(i, p1, p3, p1, p2, color);
+                    } else {
+                        //bottom half
+                        this.processScanLine(i, p1, p3, p2, p3, color);
+                    }
+
+                }
+            } else {
+                //p2 is on left side
+                for (var i:number = p1.y >> 0; i <= p3.y; i++) {
+
+                    //top half
+                    if (i < p2.y) {
+                        this.processScanLine(i, p1, p2, p1, p3, color);
+                    } else {
+                        //bottom half
+                        this.processScanLine(i, p2, p3, p1, p3, color);
+                    }
+
+                }
+            }
         }
 
     }
