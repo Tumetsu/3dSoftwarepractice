@@ -11,15 +11,23 @@ module SoftEngine {
         }
     }
 
+    export interface Face {
+        A: number;
+        B: number;
+        C: number;
+    }
+
     export class Mesh {
         Position: BABYLON.Vector3;
         Rotation: BABYLON.Vector3;
         Vertices: BABYLON.Vector3[];
+        Faces: Face[];
 
-        constructor(public name:string, verticesCount:number) {
+        constructor(public name:string, verticesCount:number, facesCount:number) {
             this.Vertices = new Array(verticesCount);
             this.Rotation = BABYLON.Vector3.Zero();
             this.Position = BABYLON.Vector3.Zero();
+            this.Faces = new Array(facesCount);
         }
     }
 
@@ -93,6 +101,49 @@ module SoftEngine {
             }
         }
 
+        public drawLine(point0:BABYLON.Vector2, point1:BABYLON.Vector2): void {
+            var dist = point1.subtract(point0).length();
+            // If the distance between the 2 points is less than 2 pixels
+            // We're exiting
+            if (dist < 2)
+                return;
+
+            // Find the middle point between first & second point
+            var middlePoint = point0.add(point1.subtract(point0).scale(0.5));
+            this.drawPoint(middlePoint);
+            //recursive
+            this.drawLine(point0, middlePoint);
+            this.drawLine(middlePoint, point1);
+        }
+
+        public drawBline(point0: BABYLON.Vector2, point1: BABYLON.Vector2): void {
+            var x0 = point0.x >> 0;
+            var y0 = point0.y >> 0;
+            var x1 = point1.x >> 0;
+            var y1 = point1.y >> 0;
+            var dx = Math.abs(x1 - x0);
+            var dy = Math.abs(y1 - y0);
+            var sx = (x0 < x1) ? 1 : -1;
+            var sy = (y0 < y1) ? 1 : -1;
+            var err = dx - dy;
+
+            while (true) {
+                this.drawPoint(new BABYLON.Vector2(x0, y0));
+
+                if ((x0 == x1) && (y0 == y1))
+                    break;
+                var e2 = 2 * err;
+                if (e2 > -dy) {
+                    err -= dy;
+                    x0 += sx;
+                }
+                if (e2 < dx) {
+                    err += dx;
+                    y0 += sy;
+                }
+            }
+        }
+
         // The main method of the engine that re-compute each vertex projection
         // during each frame
         public render(camera: Camera, meshes: Mesh[]): void {
@@ -107,11 +158,21 @@ module SoftEngine {
 
                 var transformMatrix = worldMatrix.multiply(viewMatrix).multiply(projectionMatrix);
 
-                cMesh.Vertices.forEach(function(vertice) {
-                    // First, we project the 3D coordinates into the 2D space
-                    var projectedPoint = this.project(vertice, transformMatrix);
-                    // Then we can draw on screen
-                    this.drawPoint(projectedPoint);
+                //facejen piirtäminen
+                cMesh.Faces.forEach(function(face) {
+                    //hae facen vertexit meshistä
+                    var vertexA = cMesh.Vertices[face.A];
+                    var vertexB = cMesh.Vertices[face.B];
+                    var vertexC = cMesh.Vertices[face.C];
+                    //projisoi pikselit 2d:ksi
+                    var pixelA = this.project(vertexA, transformMatrix);
+                    var pixelB = this.project(vertexB, transformMatrix);
+                    var pixelC = this.project(vertexC, transformMatrix);
+                    //piirrä viivat pikseleiden välille 2d tasolle
+                    this.drawBline(pixelA, pixelB);
+                    this.drawBline(pixelB, pixelC);
+                    this.drawBline(pixelC, pixelA);
+
                 }, this);
 
             }, this);

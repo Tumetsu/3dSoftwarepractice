@@ -21,7 +21,7 @@ gulp.task('js', function () {
 });
 
 gulp.task('watch', function () {
-    gulp.watch(['./dist/**/*.html', './dist/**/*.js'], ['html', 'js']);
+    gulp.watch(['./app/**/*.html', './dist/**/*.js'], ['html', 'js']);
 });
 
 gulp.task('default', ['connect', 'watch']);
