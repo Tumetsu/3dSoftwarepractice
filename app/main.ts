@@ -30,7 +30,7 @@ function drawingLoop() {
     //rotate meshes
     for (var i = 0; i < meshes.length; i++) {
         // rotating slightly the mesh during each frame rendered
-        meshes[i].Rotation.x += 0.01;
+        //meshes[i].Rotation.x += 0.01;
         meshes[i].Rotation.y += 0.01;
     }
 

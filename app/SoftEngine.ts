@@ -41,12 +41,14 @@ module SoftEngine {
         private workingHeight: number;
         // equals to backbuffer.data
         private backbufferdata;
+        private depthbuffer: number[];
 
         constructor(canvas: HTMLCanvasElement) {
             this.workingCanvas = canvas;
             this.workingWidth = canvas.width;
             this.workingHeight = canvas.height;
             this.workingContext = this.workingCanvas.getContext('2d');
+            this.depthbuffer = new Array(this.workingWidth * this.workingHeight);
         }
 
         // Loading the JSON file in an asynchronous manner and
@@ -132,6 +134,12 @@ module SoftEngine {
             // once cleared with black pixels, we're getting back the associated image data to
             // clear out back buffer
             this.backbuffer = this.workingContext.getImageData(0, 0, this.workingWidth, this.workingHeight);
+
+            // Clearing depth buffer
+            for (var i = 0; i < this.depthbuffer.length; i++) {
+                // Max possible value
+                this.depthbuffer[i] = 10000000;
+            }
         }
 
         // Once everything is ready, we can flush the back buffer
@@ -141,12 +149,19 @@ module SoftEngine {
         }
 
         // Called to put a pixel on screen at a specific X,Y coordinates
-        public putPixel(x:number, y:number, color:BABYLON.Color4): void {
+        public putPixel(x:number, y:number, z:number, color:BABYLON.Color4): void {
             this.backbufferdata = this.backbuffer.data;
             // As we have a 1-D Array for our back buffer
             // we need to know the equivalent cell index in 1-D based
             // on the 2D coordinates of the screen
             var index: number = ((x >> 0) + (y >> 0) * this.workingWidth) * 4;
+            var index4: number = index * 4;
+
+            if (this.depthbuffer[index] < z) {
+                return; // Discard
+            }
+
+            this.depthbuffer[index] = z;
 
             // RGBA color space is used by the HTML5 canvas
             this.backbufferdata[index] = color.r * 255;
@@ -170,14 +185,15 @@ module SoftEngine {
 
 
         // drawPoint calls putPixel but does the clipping operation before
-        public drawPoint(point: BABYLON.Vector2, color: BABYLON.Color4): void {
+        public drawPoint(point: BABYLON.Vector3, color: BABYLON.Color4): void {
             // Clipping what's visible on screen
             if (point.x >= 0 && point.y >= 0 && point.x < this.workingWidth && point.y < this.workingHeight) {
                 // Drawing a yellow point
-                this.putPixel(point.x, point.y, color);
+                this.putPixel(point.x, point.y, point.z, color);
             }
         }
 
+        /*
         public drawLine(point0:BABYLON.Vector2, point1:BABYLON.Vector2): void {
             var dist = point1.subtract(point0).length();
             // If the distance between the 2 points is less than 2 pixels
@@ -220,7 +236,7 @@ module SoftEngine {
                 }
             }
         }
-
+        */
         // The main method of the engine that re-compute each vertex projection
         // during each frame
         public render(camera: Camera, meshes: Mesh[]): void {
@@ -276,15 +292,22 @@ module SoftEngine {
         // pa, pb, pc, pd must then be sorted before
         public processScanLine(y: number, pa: BABYLON.Vector3, pb: BABYLON.Vector3,
                                pc: BABYLON.Vector3, pd: BABYLON.Vector3, color: BABYLON.Color4): void {
-
+            // Thanks to current Y, we can compute the gradient to compute others values like
+            // the starting X (sx) and ending X (ex) to draw between
+            // if pa.Y == pb.Y or pc.Y == pd.Y, gradient is forced to 1
             var gradient1:number = pa.y != pb.y ? (y - pa.y)/(pb.y - pa.y) : 1;
             var gradient2:number = pc.y != pd.y ? (y - pc.y)/(pd.y - pc.y) : 1;
             var sx:number = this.interpolate(pa.x, pb.x, gradient1);
             var ex:number = this.interpolate(pc.x, pd.x, gradient2);
 
+            var z1:number = this.interpolate(pa.z, pb.z, gradient1);
+            var z2:number = this.interpolate(pc.z, pd.z, gradient2);
+
             //draw line
-            for (var x:number = sx; x <= ex; x++) {
-                this.drawPoint(new BABYLON.Vector2(x, y), color);
+            for (var x:number = sx; x < ex; x++) {
+                var zgradient:number = (x - sx)/(ex-sx);    //normalization
+                var z = this.interpolate(z1, z2,zgradient);
+                this.drawPoint(new BABYLON.Vector3(x, y, z), color);
             }
 
         }
