@@ -49,6 +49,82 @@ module SoftEngine {
             this.workingContext = this.workingCanvas.getContext('2d');
         }
 
+        // Loading the JSON file in an asynchronous manner and
+        // calling back with the function passed providing the array of meshes loaded
+        public LoadJSONFileAsync(fileName: string, callback: (result: Mesh[]) => any): void {
+            var jsonObject = {};
+            var xmlhttp = new XMLHttpRequest();
+            xmlhttp.open("GET", fileName, true);
+            var that = this;
+            xmlhttp.onreadystatechange = function () {
+                if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+                    jsonObject = JSON.parse(xmlhttp.responseText);
+                    callback(that.CreateMeshesFromJSON(jsonObject));
+                }
+            };
+            xmlhttp.send(null);
+        }
+
+        private CreateMeshesFromJSON(jsonObject): Mesh[] {
+            var meshes: Mesh[] = [];
+            jsonObject.meshes.forEach(function(mesh) {
+                var vertices = mesh.vertices;
+                //faces
+                var indices = mesh.indices;
+                var uvCount = mesh.uvCount;
+                var verticesStep = 1;
+
+                // Depending of the number of texture's coordinates per vertex
+                // we're jumping in the vertices array  by 6, 8 & 10 windows frame
+                switch (uvCount) {
+                    case 0:
+                        verticesStep = 6;
+                        break;
+                    case 1:
+                        verticesStep = 8;
+                        break;
+                    case 2:
+                        verticesStep = 10;
+                        break;
+                }
+
+                // the number of interesting vertices information for us
+                var verticesCount = vertices.length / verticesStep;
+                // number of faces is logically the size of the array divided by 3 (A, B, C)
+                var facesCount = indices.length / 3;
+
+                var smesh = new SoftEngine.Mesh(mesh.name, verticesCount, facesCount);
+
+                // Filling the Vertices array of our mesh first
+                for (var i = 0; i < verticesCount; i++) {
+                    var x = vertices[i*verticesStep];
+                    var y = vertices[i*verticesStep+1];
+                    var z = vertices[i*verticesStep+2];
+                    smesh.Vertices[i] = new BABYLON.Vector3(x,y,z);
+                }
+
+                // Then filling the Faces array
+                for (var i = 0; i < facesCount; i++) {
+                    var a = indices[i*3];
+                    var b = indices[i*3+1];
+                    var c = indices[i*3+2];
+                    smesh.Faces[i] = {
+                        A: a,
+                        B: b,
+                        C: c
+                    };
+                }
+
+                // Getting the position you've set in Blender
+                var position = mesh.position;
+                smesh.Position = new BABYLON.Vector3(position[0], position[1], position[2]);
+                meshes.push(smesh);
+
+            }, this);
+
+            return meshes;
+        }
+
         // This function is called to clear the back buffer with a specific color
         public clear(): void {
             // Clearing with black color by default
